@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel IoT - ESP32 HiveMQ</title>
+    <!-- Importa a biblioteca MQTT via WebSocket -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #f8fafc;
+            --accent: #3b82f6;
+            --success: #22c55e;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            width: 350px;
+            text-align: center;
+        }
+
+        h2 {
+            margin-bottom: 5px;
+            font-size: 1.5rem;
+        }
+
+        #connection-status {
+            font-size: 0.85rem;
+            margin-bottom: 25px;
+            color: #94a3b8;
+        }
+
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            background-color: var(--danger);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        .connected .status-dot {
+            background-color: var(--success);
+        }
+
+        .led-card {
+            background: #0f172a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .led-indicator {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+        }
+
+        #led-state {
+            color: var(--danger);
+        }
+
+        #led-state.on {
+            color: var(--success);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            color: white;
+        }
+
+        button:active {
+            transform: scale(0.97);
+        }
+
+        .btn-on {
+            background-color: var(--success);
+        }
+
+        .btn-off {
+            background-color: var(--danger);
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Controle ESP32</h2>
+        <div id="connection-status" class="disconnected">
+            <span class="status-dot"></span> Desconectado
+        </div>
+
+        <div class="led-card">
+            <div class="led-indicator">
+                Status do LED (Porta 2): <span id="led-state">OFF</span>
+            </div>
+            <div class="btn-group">
+                <button class="btn-on" onclick="controlLed('ON')">LIGAR</button>
+                <button class="btn-off" onclick="controlLed('OFF')">DESLIGAR</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÕES DO HIVEMQ CLOUD ---
+        const host = "e536773ffa2d47a8a7daf222d737185b.s1.eu.hivemq.cloud";
+        const port = 8884; // Porta WebSocket TLS
+        const clientId = "WebClient-" + Math.random().toString(16).substring(2, 8);
+        
+        // ⚠️ Substitua pelas mesmas credenciais cadastradas no HiveMQ Cloud
+        const username = "SEU_USUARIO_HIVEMQ";
+        const password = "SUA_SENHA_HIVEMQ";
+
+        // Tópicos (devem ser os mesmos configurados no ESP32)
+        const topic_control = "esp32/led/control";
+        const topic_status = "esp32/led/status";
+
+        // Inicializa o cliente MQTT (usando SSL/TLS true para a porta 8884)
+        client = new Paho.MQTT.Client(host, Number(port), "/mqtt", clientId);
+
+        // Configura os callbacks de eventos
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // Inicia a conexão
+        console.log("Conectando ao broker...");
+        client.connect({
+            useSSL: true,
+            userName: username,
+            password: password,
+            onSuccess: onConnect,
+            onFailure: onFailure
+        });
+
+        function onConnect() {
+            console.log("Conectado com sucesso!");
+            document.getElementById("connection-status").innerHTML = '<span class="status-dot"></span> Conectado';
+            document.getElementById("connection-status").className = "connected";
+            
+            // Inscreve no tópico de status para receber atualizações do ESP32
+            client.subscribe(topic_status);
+        }
+
+        function onFailure(responseObject) {
+            console.log("Falha na conexão: " + responseObject.errorMessage);
+            document.getElementById("connection-status").innerHTML = '<span class="status-dot"></span> Erro de Conexão';
+        }
+
+        function onConnectionLost(responseObject) {
+            if (responseObject.errorCode !== 0) {
+                console.log("Conexão perdida: " + responseObject.errorMessage);
+                document.getElementById("connection-status").innerHTML = '<span class="status-dot"></span> Desconectado';
+                document.getElementById("connection-status").className = "disconnected";
+            }
+        }
+
+        // Função chamada quando chega mensagem do ESP32
+        function onMessageArrived(message) {
+            console.log("Mensagem recebida: " + message.payloadString + " no tópico: " + message.destinationName);
+            if (message.destinationName === topic_status) {
+                updateUIState(message.payloadString);
+            }
+        }
+
+        // Função para enviar comando ao ESP32
+        function controlLed(state) {
+            if (!client.isConnected()) {
+                alert("Cliente MQTT desconectado!");
+                return;
+            }
+            message = new Paho.MQTT.Message(state);
+            message.destinationName = topic_control;
+            client.send(message);
+        }
+
+        // Atualiza a interface gráfica com base no estado recebido
+        function updateUIState(state) {
+            const ledStateSpan = document.getElementById("led-state");
+            if (state === "ON") {
+                ledStateSpan.innerText = "LIGADO";
+                ledStateSpan.className = "on";
+            } else {
+                ledStateSpan.innerText = "DESLIGADO";
+                ledStateSpan.className = "off";
+            }
+        }
+    </script>
+</body>
+</html>
