@@ -3,238 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel IoT - ESP32</title>
-    <!-- Importação da biblioteca Paho MQTT para WebSockets -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <title>Monitoramento IoT | Nível de Água</title>
+    <!-- Importação da biblioteca MQTT.js via CDN -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     
     <style>
+        /* Estrutura CSS moderna e responsiva */
+        :root {
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --primary-color: #2563eb;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --success: #10b981;
+            --danger: #ef4444;
+        }
+
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         }
 
         body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: #e9ecef;
+            background-color: var(--bg-color);
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            color: #333;
+            min-height: 100vh;
+            color: var(--text-main);
         }
 
-        .card {
-            background-color: #ffffff;
-            padding: 2.5rem 2rem;
-            border-radius: 12px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-            text-align: center;
+        .dashboard-container {
+            background-color: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
             width: 100%;
-            max-width: 380px;
+            max-width: 500px;
         }
 
-        h1 {
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
             font-size: 1.5rem;
-            margin-bottom: 1.5rem;
-            color: #2c3e50;
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
         }
 
-        .status-box {
-            background-color: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .status-label {
-            font-size: 1.2rem;
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
             font-weight: 600;
-        }
-
-        /* O círculo que simula o LED */
-        .led-indicator {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            background-color: #ccc; /* Cor padrão (desconectado/desconhecido) */
+            background-color: #fee2e2;
+            color: var(--danger);
             transition: all 0.3s ease;
         }
 
-        .led-on {
-            background-color: #2ecc71;
-            box-shadow: 0 0 12px #2ecc71;
+        .status-badge.connected {
+            background-color: #d1fae5;
+            color: var(--success);
         }
 
-        .led-off {
-            background-color: #e74c3c;
-            box-shadow: 0 0 12px #e74c3c;
+        .data-card {
+            background-color: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            text-align: center;
         }
 
-        .controls {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
+        .data-label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
         }
 
-        button {
-            border: none;
-            padding: 12px 24px;
-            font-size: 1rem;
-            font-weight: bold;
-            border-radius: 6px;
-            cursor: pointer;
-            color: white;
-            transition: transform 0.1s, opacity 0.2s;
-            flex: 1;
+        .data-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
         }
 
-        button:active {
-            transform: scale(0.96);
+        .progress-container {
+            width: 100%;
+            height: 24px;
+            background-color: #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-top: 1rem;
         }
 
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .btn-on {
-            background-color: #2ecc71;
-        }
-
-        .btn-off {
-            background-color: #e74c3c;
-        }
-
-        #connection-status {
-            margin-top: 1.5rem;
-            font-size: 0.85rem;
-            color: #f39c12; /* Laranja para 'Conectando...' */
-            font-weight: 500;
+        .progress-bar {
+            height: 100%;
+            background-color: var(--primary-color);
+            width: 0%;
+            transition: width 0.5s ease-in-out;
         }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h1>Controle do ESP32</h1>
-        
-        <div class="status-box">
-            <span class="status-label">Status do LED:</span>
-            <div id="led-indicator" class="led-indicator"></div>
+    <div class="dashboard-container">
+        <div class="header">
+            <h1>Monitoramento do Tanque</h1>
+            <div id="connection-status" class="status-badge">Desconectado</div>
         </div>
 
-        <div class="controls">
-            <button id="btn-on" class="btn-on" onclick="sendControl('ON')" disabled>LIGAR</button>
-            <button id="btn-off" class="btn-off" onclick="sendControl('OFF')" disabled>DESLIGAR</button>
+        <div class="data-card">
+            <div class="data-label">Distância Medida</div>
+            <div id="distancia-val" class="data-value">-- cm</div>
         </div>
 
-        <div id="connection-status">Conectando ao Broker MQTT...</div>
+        <div class="data-card">
+            <div class="data-label">Nível / Porcentagem</div>
+            <div id="porcentagem-val" class="data-value">-- %</div>
+            <div class="progress-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+        </div>
     </div>
 
     <script>
-        // ==========================================
-        // CONFIGURAÇÕES DO HIVEMQ CLOUD (WEBSOCKETS)
-        // ==========================================
-        const mqttServer = "e536773ffa2d47a8a7daf222d737185b.s1.eu.hivemq.cloud";
-        const mqttPort = 8884; // Porta para WebSockets (TLS)
-        const mqttPath = "/mqtt";
-        const mqttUser = "espMisael"; // Substitua pelo seu usuário
-        const mqttPass = "Agua1234";   // Substitua pela sua senha
+        // Configurações do HiveMQ Cloud (WebSockets)
+        // Note o uso do protocolo wss:// e a porta 8884
+        const brokerUrl = 'wss://e536773ffa2d47a8a7daf222d737185b.s1.eu.hivemq.cloud:8884/mqtt';
         
-        const topicControl = "esp32/led/control";
-        const topicStatus = "esp32/led/status";
-
-        // Gera um ID de cliente aleatório para o navegador
-        const clientId = "WebClient-" + Math.random().toString(16).substr(2, 8);
-
-        // Instancia o cliente Paho MQTT
-        const client = new Paho.MQTT.Client(mqttServer, mqttPort, mqttPath, clientId);
-
-        // Callbacks
-        client.onConnectionLost = onConnectionLost;
-        client.onMessageArrived = onMessageArrived;
-
-        // Opções de conexão (Requer SSL/TLS para o HiveMQ Cloud)
         const options = {
-            useSSL: true,
-            userName: mqttUser,
-            password: mqttPass,
-            onSuccess: onConnect,
-            onFailure: function(message) {
-                document.getElementById("connection-status").innerText = "Falha na conexão: " + message.errorMessage;
-                document.getElementById("connection-status").style.color = "#e74c3c";
-            }
+            clientId: 'web_client_' + Math.random().toString(16).substring(2, 8),
+            username: 'medAgua',
+            password: '12345678',
+            clean: true,
+            connectTimeout: 4000,
+            reconnectPeriod: 1000,
         };
 
-        // Inicia a conexão
-        client.connect(options);
+        // Elementos do DOM
+        const statusEl = document.getElementById('connection-status');
+        const distanciaEl = document.getElementById('distancia-val');
+        const porcentagemEl = document.getElementById('porcentagem-val');
+        const progressBarEl = document.getElementById('progress-bar');
 
-        // Quando conectar com sucesso
-        function onConnect() {
-            console.log("Conectado ao HiveMQ via WebSocket!");
+        // Inicializa a conexão
+        console.log('Tentando conectar ao broker MQTT via WebSockets...');
+        const client = mqtt.connect(brokerUrl, options);
+
+        // Evento de conexão bem-sucedida
+        client.on('connect', () => {
+            console.log('Conectado com sucesso!');
+            statusEl.textContent = 'Conectado ao Broker';
+            statusEl.classList.add('connected');
             
-            let statusText = document.getElementById("connection-status");
-            statusText.innerText = "🟢 Conectado ao Broker";
-            statusText.style.color = "#2ecc71";
+            // Inscreve nos tópicos
+            client.subscribe('sensor/medAgua/distancia');
+            client.subscribe('sensor/medAgua/porcentagem');
+        });
 
-            // Habilita os botões
-            document.getElementById("btn-on").disabled = false;
-            document.getElementById("btn-off").disabled = false;
+        // Evento de perda de conexão
+        client.on('offline', () => {
+            statusEl.textContent = 'Desconectado';
+            statusEl.classList.remove('connected');
+        });
 
-            // Inscreve no tópico de status para ouvir as respostas do ESP32
-            client.subscribe(topicStatus);
-        }
+        // Recebimento de mensagens
+        client.on('message', (topic, message) => {
+            const payload = message.toString();
+            console.log(`Recebido no tópico ${topic}: ${payload}`);
 
-        // Quando a conexão cair
-        function onConnectionLost(responseObject) {
-            if (responseObject.errorCode !== 0) {
-                console.log("Conexão perdida: " + responseObject.errorMessage);
-                
-                let statusText = document.getElementById("connection-status");
-                statusText.innerText = "🔴 Desconectado";
-                statusText.style.color = "#e74c3c";
-
-                // Desabilita os botões
-                document.getElementById("btn-on").disabled = true;
-                document.getElementById("btn-off").disabled = true;
-                
-                // Reseta o indicador visual
-                document.getElementById("led-indicator").className = "led-indicator";
+            if (topic === 'sensor/medAgua/distancia') {
+                distanciaEl.textContent = `${payload} cm`;
+            } 
+            else if (topic === 'sensor/medAgua/porcentagem') {
+                porcentagemEl.textContent = `${payload} %`;
+                // Atualiza a barra de progresso garantindo que fique entre 0 e 100
+                const percentValue = Math.min(Math.max(parseFloat(payload), 0), 100);
+                progressBarEl.style.width = `${percentValue}%`;
             }
-        }
-
-        // Quando receber uma mensagem do ESP32
-        function onMessageArrived(message) {
-            console.log("Mensagem recebida no tópico " + message.destinationName + ": " + message.payloadString);
-            
-            if (message.destinationName === topicStatus) {
-                let payload = message.payloadString.trim().toUpperCase();
-                let ledElement = document.getElementById("led-indicator");
-
-                // Atualiza o CSS do indicador baseado no status retornado pelo ESP32
-                if (payload === "ON" || payload === "1") {
-                    ledElement.className = "led-indicator led-on";
-                } else if (payload === "OFF" || payload === "0") {
-                    ledElement.className = "led-indicator led-off";
-                }
-            }
-        }
-
-        // Função para enviar o comando de controle ao clicar nos botões
-        function sendControl(command) {
-            if (client.isConnected()) {
-                let message = new Paho.MQTT.Message(command);
-                message.destinationName = topicControl;
-                client.send(message);
-                console.log("Enviado comando: " + command);
-            }
-        }
+        });
     </script>
 </body>
 </html>
